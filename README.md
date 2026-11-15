@@ -4,6 +4,34 @@ a browser frontend for codex desktop, running on a machine you control.
 
 https://github.com/user-attachments/assets/0a33cbd8-741c-412c-9e75-46dfe9324596
 
+> **windows fork.** this tree adds native windows support on top of upstream: a
+> PowerShell build that replaces the bash/macOS prepare scripts, a loopback-only
+> launcher that points the app at a local `codex.exe`, and an nginx TLS +
+> basic-auth front door for LAN use. see
+> [`deploy/README.md`](deploy/README.md) for the runbook and the failure table.
+> everything below still describes upstream.
+
+## windows
+
+tested on windows 11, portable node 22, nginx 1.30.
+
+```powershell
+pwsh -File deploy/setup-windows.ps1   # one-time build: portable node, unpacked bundle, patches
+pwsh -File deploy/run-server.ps1      # serve on 127.0.0.1:8214
+pwsh -File deploy/nginx.ps1 start     # https://<lan-ip>:8443 behind basic auth
+```
+
+why it differs from the macOS / linux instructions:
+
+- `better-sqlite3` 12.x has no prebuild for node 26, so the build fetches its own
+  node 22 into `tools/` and never touches the system node.
+- the unpacked bundle is the macOS one, so the build has to point the app at a
+  locally installed `codex.exe` (`CODEX_CLI_PATH`). without it the app pauses on
+  "organization settings could not be loaded" behind a native dialog and serves
+  a blank page.
+- plain http on a LAN IP is not a secure context, so the client dies on
+  `crypto.randomUUID` before rendering. that is why the front door is TLS only.
+
 ## motivation
 
 the agents were never meant to stay trapped in a terminal window for long.
