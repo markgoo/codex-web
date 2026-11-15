@@ -15,6 +15,18 @@ type RequestOptions = {
   referrerPolicy?: ReferrerPolicy;
 };
 
+// Networking from the main process has no Chromium stack behind it, so failures
+// here are otherwise invisible: the app just retries a request forever. Log the
+// destination and the outcome (always for failures, everything with
+// CODEX_WEB_DEBUG_NET=1) so a stalled startup can be traced to one URL.
+const debugNet = process.env.CODEX_WEB_DEBUG_NET === "1";
+
+function describeError(error: unknown): string {
+  const code = (error as { cause?: { code?: string } })?.cause?.code;
+  const message = error instanceof Error ? error.message : String(error);
+  return code ? `${code}: ${message}` : message;
+}
+
 // Electron's request is a writable stream; its response is a readable stream.
 // Keep redirects manual here so preview callers can validate each destination.
 export class NetRequest extends Writable {
@@ -128,15 +140,31 @@ export class NetRequest extends Writable {
     this.chunks.length = 0;
     const redirect = this.options.redirect ?? "follow";
     for (let redirects = 0; !this.destroyed; redirects++) {
-      const result = await globalThis.fetch(url, {
-        method,
-        headers: this.headers,
-        body,
-        redirect: "manual",
-        credentials: this.options.credentials,
-        referrerPolicy: this.options.referrerPolicy,
-        signal: this.controller.signal,
-      });
+      if (debugNet) console.error(`[net-request] ${method} ${url.href}`);
+      let result: Response;
+      try {
+        result = await globalThis.fetch(url, {
+          method,
+          headers: this.headers,
+          body,
+          redirect: "manual",
+          credentials: this.options.credentials,
+          referrerPolicy: this.options.referrerPolicy,
+          signal: this.controller.signal,
+        });
+      } catch (error) {
+        if (!this.destroyed) {
+          console.error(
+            `[net-request] ${method} ${url.href} failed: ${describeError(error)}`,
+          );
+        }
+        throw error;
+      }
+      if (!this.destroyed && (debugNet || result.status >= 400)) {
+        console.error(
+          `[net-request] ${method} ${url.href} -> ${result.status} ${result.statusText}`,
+        );
+      }
       if (this.destroyed) {
         await result.body?.cancel();
         return;

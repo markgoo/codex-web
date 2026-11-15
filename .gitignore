@@ -1,3 +1,20 @@
 node_modules/
 scratch*/
 sentry
+tools/
+deploy/htpasswd
+deploy/certs/
+
+# tsc emits next to the sources (src/server); the Windows build in
+# deploy/setup-windows.ps1 writes scratch/server instead.
+src/server/**/*.js
+src/server/**/*.js.map
+src/server/**/*.d.ts
+src/server/**/*.d.ts.map
+
+# The desktop app resolves app.getPath() to the working directory, so it drops
+# its own state here when the server runs from the repo root.
+statsig-state.json
+statsig-state.json.bak
+browser-sidebar-page-states.json
+.codex-tpp-local-executor-installation-id

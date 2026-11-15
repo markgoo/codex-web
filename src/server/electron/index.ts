@@ -72,6 +72,7 @@ function getIpcMainBridgeState(): IpcMainBridgeState {
 }
 
 const debugShim = process.env.CODEX_WEB_DEBUG_SHIM === "1";
+const debugNet = process.env.CODEX_WEB_DEBUG_NET === "1";
 
 function log(method: string, args: unknown[]): void {
   if (!debugShim) return;
@@ -336,6 +337,23 @@ const appBase = {
   async getGPUInfo(infoLevel: string): Promise<{ gpuDevice: unknown[] }> {
     log("app.getGPUInfo", [infoLevel]);
     return { gpuDevice: [] };
+  },
+  // Upstream reads this only when process.platform is "win32" (it decides
+  // whether the Windows system backdrop may be used), so the darwin build never
+  // needed it and the shim never had it. Without it, every browser tab fails to
+  // create its renderer window and the client reloads in a loop (white screen).
+  getGPUFeatureStatus(): Record<string, string> {
+    log("app.getGPUFeatureStatus", []);
+    return {
+      "2d_canvas": "enabled",
+      canvas: "enabled",
+      gpu_compositing: "enabled",
+      "multiple_raster_threads": "enabled_on",
+      rasterization: "enabled",
+      video_decode: "enabled",
+      webgl: "enabled",
+      webgl2: "enabled",
+    };
   },
   setName(name: string): void {
     log("app.setName", [name]);
@@ -786,6 +804,21 @@ class Notification {
 const dialog = {
   async showMessageBox(...args: unknown[]): Promise<{ response: number }> {
     log("dialog.showMessageBox", args);
+    // The app "pauses" for some startup failures by showing a modal and waiting
+    // for a button; nothing can click it here, so the browser meanwhile shows a
+    // blank page. Always surface what was asked, not just under debug logging.
+    const [options] = args as [
+      | { message?: unknown; detail?: unknown; buttons?: unknown }
+      | undefined,
+    ];
+    if (options && typeof options === "object") {
+      const { message, detail, buttons } = options;
+      console.error(
+        `[dialog] ${String(message ?? "")}` +
+          (detail ? ` | ${String(detail).replace(/\s+/g, " ")}` : "") +
+          (Array.isArray(buttons) ? ` | buttons=${buttons.join("/")}` : ""),
+      );
+    }
     return { response: 0 };
   },
 };
@@ -805,7 +838,30 @@ const net = {
   async fetch(input: string | URL, init?: RequestInit): Promise<Response> {
     // log("net.fetch", [input, init]);
     if (typeof globalThis.fetch === "function") {
-      return globalThis.fetch(input as URL | RequestInfo, init);
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : String((input as Request).url ?? input);
+      if (debugNet) console.error(`[net.fetch] ${url}`);
+      try {
+        const response = await globalThis.fetch(
+          input as URL | RequestInfo,
+          init,
+        );
+        if (debugNet || response.status >= 400) {
+          console.error(
+            `[net.fetch] ${url} -> ${response.status} ${response.statusText}`,
+          );
+        }
+        return response;
+      } catch (error) {
+        console.error(
+          `[net.fetch] ${url} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        throw error;
+      }
     }
     return new Response("", { status: 204 });
   },
