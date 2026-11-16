@@ -18,3 +18,7 @@ statsig-state.json
 statsig-state.json.bak
 browser-sidebar-page-states.json
 .codex-tpp-local-executor-installation-id
+
+# Explorer shortcuts are machine-local (absolute paths).
+*.lnk
+
