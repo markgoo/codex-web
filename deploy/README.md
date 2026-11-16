@@ -88,17 +88,31 @@ app-server 起不来 → 读不到组织设置 → 应用暂停在原生对话�
 也就是说：**被 node 拉起的 codex 子进程对这个家目录的写入会被拒**。根因未定（不像是文件权限，
 `icacls` 里当前用户是全权；也不像安全软件）——所以 `run-server.ps1` 默认绕开它。
 
-**做法**：`CODEX_HOME` 指到 `scratch\codex-home`，每次启动从真实家目录同步 `auth.json`（登录态），
+**做法**：`CODEX_HOME` 指到 `scratch\codex-home-full`，每次启动从真实家目录同步 `auth.json`（登录态），
 `config.toml` 只在缺失时复制（保留你在隔离目录里的改动）。
 
-**代价**：**聊天历史是独立的**，网页里看不到原来那些会话（它们仍在 `%USERPROFILE%\.codex`，
-官方 Codex 桌面版照常可见）。想换回共享家目录：
+**把已有历史搬过去**（这样网页里也能看到以前的会话）：
+
+```powershell
+# 先停网页端，否则索引库被占用
+pwsh -File deploy\CodexWeb.ps1 stop
+pwsh -File deploy\import-history.ps1          # rollout 记录 + 线程索引（约 1.2 GB）
+pwsh -File deploy\CodexWeb.ps1 start
+```
+
+只拷 `sessions/` 是不够的——会话列表读的是 `state_5.sqlite` 里的线程索引，脚本会用
+`VACUUM INTO` 做一致性快照（`deploy/vacuum-copy.mjs`），所以源库正在被 Codex 写入也不会拷出坏库。
+源目录全程只读。`-WhatIfOnly` 可以先看会拷什么，`-Full` 连 2.8 GB 的消息历史库一起拷。
+
+**代价**：**聊天历史是独立的**，之后网页端和桌面版各记各的（导入的是快照；要再同步就再跑一次导入）。
+想换回共享家目录：
 
 ```powershell
 pwsh -File deploy\run-server.ps1 -SharedHome   # 当前环境下会白屏，等根因解决后再用
 ```
 
-隔离目录可以直接删掉重建（`scratch\codex-home`）；它只存这个 web 实例自己的历史与临时状态。
+隔离目录可以直接删掉重建（`scratch\codex-home-full`）；它只存这个 web 实例自己的历史与临时状态。
+想同时保留几份历史，用 `-CodexHome <路径>` 指定别的目录。
 
 ## 步骤
 

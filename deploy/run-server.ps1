@@ -18,7 +18,9 @@ param(
   # shell pauses on a native dialog, and the page stays blank. A home inside the
   # repository works, so that is the default; -SharedHome goes back to the real
   # one (which is what the official desktop app keeps using).
-  [switch]$SharedHome
+  [switch]$SharedHome,
+  # Where the isolated Codex home lives. Override to keep several histories apart.
+  [string]$CodexHome = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,7 +66,7 @@ if ($integrity -eq "Low") {
 # writable, so it becomes the default; the credential and config are copied over
 # on every start (the login stays in sync with Codex, which keeps using the real
 # home).
-$codexHome = Join-Path $repo "scratch\codex-home"
+$codexHome = if ($CodexHome) { $CodexHome } else { Join-Path $repo "scratch\codex-home-full" }
 if ($SharedHome) {
   Write-Host "codex home: $env:USERPROFILE\.codex (shared with Codex; known to pause on this host)"
 } else {
