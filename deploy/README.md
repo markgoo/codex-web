@@ -102,7 +102,26 @@ pwsh -File deploy\CodexWeb.ps1 start
 
 只拷 `sessions/` 是不够的——会话列表读的是 `state_5.sqlite` 里的线程索引，脚本会用
 `VACUUM INTO` 做一致性快照（`deploy/vacuum-copy.mjs`），所以源库正在被 Codex 写入也不会拷出坏库。
-源目录全程只读。`-WhatIfOnly` 可以先看会拷什么，`-Full` 连 2.8 GB 的消息历史库一起拷。
+索引里存的是 rollout 的**绝对路径**（还有 `\\?\C:\...` 和 JSON 转义两种形态），脚本随后用
+`deploy/relocate-threads.mjs` 全部改写到隔离家目录，并自检 "rollouts not writable: 0"——
+不改的话点开会话会报 `failed to resume local thread recorder: 拒绝访问 (os error 5)`。
+源目录全程只读。`-WhatIfOnly` 可以先看会拷什么。
+
+**如果打开会话提示 provider 不匹配**：
+
+```
+This chat uses custom, but your current provider is openai. Switch to custom to continue.
+```
+
+说明历史大多是用 `custom` 这个 provider 建的，而隔离家目录的 `config.toml` 没有默认 provider。
+在 `scratch\codex-home-full\config.toml` 的**第一行**（必须在任何 `[表]` 之前）加：
+
+```toml
+model_provider = "custom"
+```
+
+然后重启。`[model_providers.custom]` 本身已经在配置里（从原家目录复制过来的）。
+
 
 **代价**：**聊天历史是独立的**，之后网页端和桌面版各记各的（导入的是快照；要再同步就再跑一次导入）。
 想换回共享家目录：
