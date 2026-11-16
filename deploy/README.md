@@ -33,6 +33,29 @@ secure context，`window.crypto.randomUUID` 直接是 undefined，包在渲染�
 `crypto.randomUUID is not a function` —— 页面全白。`http://127.0.0.1` / `localhost`
 属于 secure context，所以本机直连没事，一到局域网就崩。顺带 basic auth 的密码也不会明文上网。
 
+## 日常启动：双击一个程序
+
+`deploy\CodexWeb.cmd`（内部走 `CodexWeb.vbs`，用 WScript 隐藏窗口）会按顺序拉起 codex-web 和 nginx，
+等端口真的应答后再打开浏览器，**不留任何控制台窗口**。开机后点一次即可。
+
+```powershell
+pwsh -File deploy\CodexWeb.ps1 status     # 端口、HTTP 应答码、最近日志
+pwsh -File deploy\CodexWeb.ps1 start      # 已经在跑就跳过，不会重复起
+pwsh -File deploy\CodexWeb.ps1 stop
+pwsh -File deploy\CodexWeb.ps1 open
+```
+
+几个刻意的设计：
+
+- **它不会盲报 ready**：端口在监听但应用其实卡在"组织设置"暂停态时，`start` / `status` 会直接报
+  `PAUSED`（判据是日志里出现 `Organization settings could not be loaded`），避免你对着白屏猜。
+- 日志在 `scratch\logs\`（`codex-web.log`、`codex-web-nginx.log`），窗口没了也不丢输出。
+- 只杀自己端口的进程（`stop` 按 8214 的监听 pid 走），不会误杀其它 node。
+
+如果想要"登录就自动起"，`deploy\autostart.ps1 install` 会往启动文件夹放一个隐藏的 .vbs
+（`-Method task` 则注册计划任务，带崩溃重启，但这台机器上任务计划程序拒绝授权，所以默认走启动文件夹）。
+注意 codex-web **不能**做成 Windows 服务：服务跑在 SYSTEM 下读不到你的 `%USERPROFILE%\.codex`。
+
 ## 步骤
 
 ### 1. 建账号
