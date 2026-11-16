@@ -93,6 +93,10 @@ if ((Test-Path $node) -and (Test-Path $indexSource)) {
     if ($LASTEXITCODE -ne 0) {
       throw "could not snapshot the thread index - stop codex-web (CodexWeb Stop) and run again"
     }
+    # The index stores absolute rollout paths; without rewriting them the app
+    # resumes a chat by opening the original file, which fails with os error 5.
+    & $node (Join-Path $PSScriptRoot "relocate-threads.mjs") $indexTarget $SourceHome $TargetHome
+    if ($LASTEXITCODE -ne 0) { throw "could not rewrite the imported rollout paths" }
   }
 } else {
   Write-Host "skip  state_5.sqlite              (portable node or index missing)"
