@@ -45,6 +45,10 @@ pwsh -File deploy\CodexWeb.ps1 stop
 pwsh -File deploy\CodexWeb.ps1 open
 ```
 
+停止也能双击：`deploy\CodexWebStop.cmd`（显示它停了什么，5 秒后自动关窗）。
+如果 nginx 是被别的权限（比如管理员）启动的，`nginx -s stop` 会 `Access is denied`，
+`stop` 会自动退回"读 `logs/nginx.pid` 杀主进程 + 清理仍占着 8080/8443 的遗留 worker"。
+
 几个刻意的设计：
 
 - **它不会盲报 ready**：端口在监听但应用其实卡在"组织设置"暂停态时，`start` / `status` 会直接报

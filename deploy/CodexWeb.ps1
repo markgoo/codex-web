@@ -171,7 +171,43 @@ switch ($Action) {
   "stop" {
     if (Test-Listening 8443 -or Test-Listening 8080) {
       Write-Host "nginx      : stopping"
-      & (Join-Path $Repo "deploy\nginx.ps1") stop | Out-Null
+      & (Join-Path $Repo "deploy\nginx.ps1") stop *> $null
+      Start-Sleep -Milliseconds 800
+
+      if (@(8080, 8443) | Where-Object { Test-Listening $_ }) {
+        # `nginx -s stop` signals the master through a named event; if nginx was
+        # started under a different privilege that is refused ("Access is
+        # denied"), so fall back to the recorded master pid plus whatever still
+        # holds the two ports (an orphaned worker keeps them bound).
+        $pidFiles = Get-ChildItem (Join-Path $Repo "tools") -Directory -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -like "nginx*" } |
+          ForEach-Object { Join-Path $_.FullName "logs\nginx.pid" } |
+          Where-Object { Test-Path $_ }
+        foreach ($pidFile in $pidFiles) {
+          $recorded = (Get-Content $pidFile -Raw -ErrorAction SilentlyContinue).Trim()
+          if ($recorded -match "^\d+$") {
+            try {
+              Stop-Process -Id ([int]$recorded) -Force -ErrorAction Stop
+              Write-Host "nginx      : stopped master pid $recorded"
+            } catch {
+              Write-Warning "nginx      : could not stop master pid ${recorded}: $($_.Exception.Message)"
+            }
+          }
+          Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
+        }
+        foreach ($port in @(8080, 8443)) {
+          $leftover = netstat -ano | Select-String ":$port\s" | Select-String "LISTENING" |
+            ForEach-Object { ($_.Line -split "\s+")[-1] } | Sort-Object -Unique
+          foreach ($processId in $leftover) {
+            try {
+              Stop-Process -Id ([int]$processId) -Force -ErrorAction Stop
+              Write-Host "nginx      : stopped leftover pid $processId on port $port"
+            } catch {
+              Write-Warning "nginx      : port $port still held by pid ${processId}: $($_.Exception.Message)"
+            }
+          }
+        }
+      }
     } else {
       Write-Host "nginx      : not running"
     }
