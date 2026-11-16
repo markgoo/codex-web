@@ -95,7 +95,19 @@ if ((Test-Path $node) -and (Test-Path $indexSource)) {
     }
     # The index stores absolute rollout paths; without rewriting them the app
     # resumes a chat by opening the original file, which fails with os error 5.
-    & $node (Join-Path $PSScriptRoot "relocate-threads.mjs") $indexTarget $SourceHome $TargetHome
+    # Imported threads also keep the provider they were created with, and the app
+    # refuses to resume a chat whose provider differs from this home's default
+    # ("This chat uses custom, but your current provider is openai"), so pin them
+    # to whatever model_provider the target config declares.
+    $provider = $null
+    $targetConfig = Join-Path $TargetHome "config.toml"
+    if (Test-Path $targetConfig) {
+      $match = Select-String -Path $targetConfig -Pattern '^\s*model_provider\s*=\s*"([^"]+)"' | Select-Object -First 1
+      if ($match) { $provider = $match.Matches[0].Groups[1].Value }
+    }
+    $relocateArgs = @($indexTarget, $SourceHome, $TargetHome)
+    if ($provider) { $relocateArgs += $provider }
+    & $node (Join-Path $PSScriptRoot "relocate-threads.mjs") @relocateArgs
     if ($LASTEXITCODE -ne 0) { throw "could not rewrite the imported rollout paths" }
   }
 } else {

@@ -12,13 +12,19 @@
 //   \\?\C:\Users\me\.codex\sessions\...
 //   C:\\Users\\me\\.codex\\memories  (escaped, inside the sandbox_policy JSON)
 //
-//   node deploy/relocate-threads.mjs <state_5.sqlite> <sourceHome> <targetHome>
+//   node deploy/relocate-threads.mjs <state_5.sqlite> <sourceHome> <targetHome> [provider]
+//
+// With [provider], every thread is also pinned to that provider. History spans
+// several (custom/openai/deepseek here) but a home has a single default, and the
+// app refuses to resume a chat whose provider differs: "This chat uses custom,
+// but your current provider is openai". Normalising keeps every imported chat
+// openable; read the default from the target home's config.toml.
 //
 // Stop codex-web first: it holds the database open.
 import { closeSync, existsSync, openSync } from "node:fs";
 import Database from "better-sqlite3";
 
-const [file, sourceHome, targetHome] = process.argv.slice(2);
+const [file, sourceHome, targetHome, provider] = process.argv.slice(2);
 if (!file || !sourceHome || !targetHome) {
   console.error("usage: node deploy/relocate-threads.mjs <state_5.sqlite> <sourceHome> <targetHome>");
   process.exit(1);
@@ -26,6 +32,11 @@ if (!file || !sourceHome || !targetHome) {
 
 const db = new Database(file, { fileMustExist: true });
 
+// Pin every thread to this home's provider (see the header comment).
+if (provider) {
+  const pinned = db.prepare("update threads set model_provider = ? where model_provider is not ?").run(provider, provider).changes;
+  console.log(`threads pinned to provider ${provider} : ${pinned}`);
+}
 const outside = () => db.prepare("select count(*) as n from threads where rollout_path not like ?").get(`${targetHome}%`).n;
 const before = outside();
 console.log(`threads outside the target home : ${before}`);
