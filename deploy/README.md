@@ -133,6 +133,32 @@ pwsh -File deploy\run-server.ps1 -SharedHome   # 当前环境下会白屏，等�
 隔离目录可以直接删掉重建（`scratch\codex-home-full`）；它只存这个 web 实例自己的历史与临时状态。
 想同时保留几份历史，用 `-CodexHome <路径>` 指定别的目录。
 
+## 已知限制：`Finish Windows setup to continue` 横幅
+
+输入框上方会有一条 "Finish Windows setup to continue / Continue"，每个会话都有。原因不是我们的配置，而是**版本代差**：
+
+| 组件 | 版本 |
+| --- | --- |
+| 本仓库解包的 bundle（`scratch/asar/package.json`） | `26.1007.30912` |
+| 本机安装的官方 Codex App（`CodexSandboxService.OpenAI.Codex` 指向的 WindowsApps 包） | `26.1111.2228.0` |
+
+app-server 的自述是 `windowsSandbox/readiness → {"status":"updateRequired"}`：它看到机器上的沙箱服务比自己这套 bundle 新，于是要求升级。
+用 npm 版 CLI 和桌面版自带 CLI 问都是同一结果，所以是机器级状态，**重启 codex-web 不会消除**。
+
+试过但**不可行**的绕法（别再试）：删掉 `[windows] sandbox`（界面变成整页 "creating a sandbox…"）、
+设成 `"none"`（白屏）、复制旧 `setup_marker.json`（v5 太旧，正是它导致 `updateRequired`）。
+`codex sandbox uninstall` 只清理旧版遗留账户，清掉后状态仍是 `updateRequired`。
+
+要彻底消除，只能把 bundle 升到与本机 App 一致的版本：
+
+```powershell
+pwsh -File deploy\setup-windows.ps1 -AppVersion 26.1111.2228.0
+```
+
+风险：`patches/*.patch` 是针对 `26.1007` 源码的 diff，新版本可能打不上，需要逐个适配。
+回滚就是换回 `-AppVersion 26.1007.30912` 重跑（旧 zip 仍在 `scratch\downloads\`）。
+不升级也能用：浏览历史、切换会话不受影响。
+
 ## 步骤
 
 ### 1. 建账号
