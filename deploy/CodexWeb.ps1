@@ -20,7 +20,9 @@ param(
   [string]$Repo = (Split-Path -Parent $PSScriptRoot),
   [string]$HostAddress = "127.0.0.1",
   [int]$Port = 8214,
-  [int]$TimeoutSeconds = 120
+  [int]$TimeoutSeconds = 120,
+  # Debug aid: keep a minimised console in the taskbar instead of no window.
+  [switch]$Minimized
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,7 +43,11 @@ function Get-PwshPath {
   throw "pwsh.exe not found (PowerShell 7 required)"
 }
 
-# Detached, no window, output appended to the log by a generated launcher.
+# Detached, own console (minimised), output appended to the log by a generated
+# launcher.
+#
+# Hidden by default (no window at all). `-Minimized` keeps a console in the
+# taskbar: useful when diagnosing whether a failure depends on having one.
 function Start-Hidden([string]$label, [string]$scriptName, [string[]]$ExtraArgs = @()) {
   $launcher = Join-Path $logDir "$label.launcher.ps1"
   $log = Join-Path $logDir "$label.log"
@@ -54,9 +60,10 @@ function Start-Hidden([string]$label, [string]$scriptName, [string[]]$ExtraArgs 
 "[{0}] $scriptName exited code=`$LASTEXITCODE" -f (Get-Date -Format s) | Out-File -Append -Encoding utf8 `$log
 "@
   Set-Content -Path $launcher -Value $body -Encoding utf8
+  $windowStyle = if ($Minimized) { "Minimized" } else { "Hidden" }
   Start-Process -FilePath (Get-PwshPath) `
-    -ArgumentList @("-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", "`"$launcher`"") `
-    -WindowStyle Hidden -WorkingDirectory $Repo | Out-Null
+    -ArgumentList @("-NoProfile", "-WindowStyle", $windowStyle, "-ExecutionPolicy", "Bypass", "-File", "`"$launcher`"") `
+    -WindowStyle $windowStyle -WorkingDirectory $Repo | Out-Null
 }
 
 function Wait-Listening([int]$port, [int]$Seconds, [string]$what) {

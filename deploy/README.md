@@ -60,6 +60,46 @@ pwsh -File deploy\CodexWeb.ps1 open
 （`-Method task` 则注册计划任务，带崩溃重启，但这台机器上任务计划程序拒绝授权，所以默认走启动文件夹）。
 注意 codex-web **不能**做成 Windows 服务：服务跑在 SYSTEM 下读不到你的 `%USERPROFILE%\.codex`。
 
+## 为什么默认用独立的 Codex 家目录
+
+**现象**：页面永远只有 OpenAI 的 logo；日志里反复出现
+
+```
+[policy-transport] ... 拒绝访问。 (os error 5) at path "...\.codex\tmp\arg0-windows\codex-arg0XXXX"
+[policy-transport] ... Error: failed to initialize sqlite state runtime under C:\Users\sulink\.codex
+[policy-catch] phase=policy-read ... reason=process code=1
+[dialog] Organization settings could not be loaded | ... | buttons=Retry/Sign out/Quit
+```
+
+app-server 起不来 → 读不到组织设置 → 应用暂停在原生对话框上（浏览器点不到）→ 白屏。
+
+**已排除**（都实测过）：网络/代理、HTTPS 与证书、`[windows] sandbox = "elevated"` 配置、
+`CodexSandboxService.OpenAI.Codex` 服务、工作目录、进程完整性级别、桌面版自带 CLI vs npm 版 CLI、
+`features.code_mode_host` 标志、火绒（拦截日志里没有相关记录）。
+
+**已确认的差异**：
+
+| 启动方式 | 结果 |
+| --- | --- |
+| Explorer → `cmd` → `codex.exe app-server …` | ✅ 正常，能写 `%USERPROFILE%\.codex` |
+| `cmd` → `node.exe` → `codex.exe`（应用的做法） | ❌ `os error 5` |
+| 任意父进程，`CODEX_HOME` 指到仓库内目录 | ✅ 正常 |
+
+也就是说：**被 node 拉起的 codex 子进程对这个家目录的写入会被拒**。根因未定（不像是文件权限，
+`icacls` 里当前用户是全权；也不像安全软件）——所以 `run-server.ps1` 默认绕开它。
+
+**做法**：`CODEX_HOME` 指到 `scratch\codex-home`，每次启动从真实家目录同步 `auth.json`（登录态），
+`config.toml` 只在缺失时复制（保留你在隔离目录里的改动）。
+
+**代价**：**聊天历史是独立的**，网页里看不到原来那些会话（它们仍在 `%USERPROFILE%\.codex`，
+官方 Codex 桌面版照常可见）。想换回共享家目录：
+
+```powershell
+pwsh -File deploy\run-server.ps1 -SharedHome   # 当前环境下会白屏，等根因解决后再用
+```
+
+隔离目录可以直接删掉重建（`scratch\codex-home`）；它只存这个 web 实例自己的历史与临时状态。
+
 ## 步骤
 
 ### 1. 建账号
